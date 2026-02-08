@@ -6,6 +6,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import story
+from routers import auth
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -28,6 +29,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(story.router, prefix="/story", tags=["Story"])
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 
 @app.get("/")
 def root():

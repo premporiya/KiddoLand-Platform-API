@@ -12,9 +12,9 @@ from schemas.story import (
 )
 from utils.huggingface_client import generate_story, rewrite_story
 from utils.safety_filter import is_content_safe
-from utils.auth import verify_token
+from utils.auth_service import get_current_user
 
-router = APIRouter(dependencies=[Depends(verify_token)])
+router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.post("/generate", response_model=StoryGenerateResponse)
