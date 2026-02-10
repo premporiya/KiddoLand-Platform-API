@@ -7,10 +7,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import story
 from routers import auth
+from routers import ai
 from dotenv import load_dotenv
+from utils.config import validate_huggingface_config
 
 # Load environment variables
 load_dotenv()
+
+# Fail fast if Hugging Face configuration is missing
+validate_huggingface_config()
 
 app = FastAPI(
     title="KiddoLand API",
@@ -30,6 +35,7 @@ app.add_middleware(
 # Include routers
 app.include_router(story.router, prefix="/story", tags=["Story"])
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+app.include_router(ai.router, prefix="/ai", tags=["AI"])
 
 @app.get("/")
 def root():
