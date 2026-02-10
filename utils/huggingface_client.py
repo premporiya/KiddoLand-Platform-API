@@ -2,24 +2,9 @@
 Hugging Face API Client
 Handles communication with Hugging Face Inference API
 """
-import os
 import requests
-from typing import Optional
-from dotenv import load_dotenv
 
-# Load environment variables (in case app wasn't started from project root)
-load_dotenv()
-
-# Hugging Face API configuration (Inference Providers, OpenAI-compatible)
-HUGGINGFACE_API_URL = os.getenv(
-    "HUGGINGFACE_API_URL",
-    "https://router.huggingface.co/v1/chat/completions"
-)
-HUGGINGFACE_API_TOKEN = os.getenv("HUGGINGFACE_API_TOKEN")
-HUGGINGFACE_MODEL = os.getenv(
-    "HUGGINGFACE_MODEL",
-    "mistralai/Mistral-7B-Instruct-v0.2"
-)
+from utils.config import get_huggingface_config
 
 # Timeout configuration
 REQUEST_TIMEOUT = 60  # seconds
@@ -30,7 +15,7 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
     Internal function to call Hugging Face Inference API.
     
     Args:
-        prompt: The prompt to send to the model
+        messages: List of chat messages in OpenAI-compatible format
         max_length: Maximum length of generated text
         
     Returns:
@@ -39,16 +24,15 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
     Raises:
         Exception: If API call fails
     """
-    if not HUGGINGFACE_API_TOKEN:
-        raise Exception("HUGGINGFACE_API_TOKEN not found in environment variables")
+    config = get_huggingface_config()
     
     headers = {
-        "Authorization": f"Bearer {HUGGINGFACE_API_TOKEN}",
+        "Authorization": f"Bearer {config.api_token}",
         "Content-Type": "application/json",
     }
 
     payload = {
-        "model": HUGGINGFACE_MODEL,
+        "model": config.model_id,
         "messages": messages,
         "temperature": 0.7,
         "top_p": 0.9,
@@ -58,7 +42,7 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
     
     try:
         response = requests.post(
-            HUGGINGFACE_API_URL,
+            config.api_url,
             headers=headers,
             json=payload,
             timeout=REQUEST_TIMEOUT
@@ -172,6 +156,23 @@ def rewrite_story(original_story: str, instruction: str, age: int) -> str:
     rewritten_story = _call_huggingface_api(messages, max_length=1500)
     
     return rewritten_story
+
+
+def sample_completion(prompt: str) -> str:
+    """
+    Generate a short completion for a sample AI endpoint.
+
+    Args:
+        prompt: User prompt to send to the model
+
+    Returns:
+        Generated response text
+    """
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant for kids."},
+        {"role": "user", "content": prompt},
+    ]
+    return _call_huggingface_api(messages, max_length=300)
 
 
 def _get_age_guidance(age: int) -> str:
