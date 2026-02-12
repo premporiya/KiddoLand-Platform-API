@@ -10,7 +10,11 @@ from schemas.story import (
     StoryRewriteResponse,
     ErrorResponse
 )
-from utils.huggingface_client import generate_story, rewrite_story
+from utils.huggingface_client import (
+    HuggingFaceError,
+    generate_story,
+    rewrite_story,
+)
 from utils.safety_filter import is_content_safe
 from utils.auth_service import get_current_user
 
@@ -56,6 +60,11 @@ def generate_story_endpoint(request: StoryGenerateRequest):
         
         return StoryGenerateResponse(story=generated_story)
     
+    except HuggingFaceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=f"Story generation failed: {str(exc)}",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -110,6 +119,11 @@ def rewrite_story_endpoint(request: StoryRewriteRequest):
         
         return StoryRewriteResponse(story=rewritten_story)
     
+    except HuggingFaceError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=f"Story rewriting failed: {str(exc)}",
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
