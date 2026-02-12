@@ -2,12 +2,53 @@
 Hugging Face API Client
 Handles communication with Hugging Face Inference API
 """
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+
 import requests
 
 from utils.config import get_huggingface_config
 
 # Timeout configuration
 REQUEST_TIMEOUT = 60  # seconds
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class HuggingFaceError(Exception):
+    message: str
+    status_code: int = 502
+
+    def __str__(self) -> str:
+        return self.message
+
+
+class HuggingFaceConfigError(HuggingFaceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=500)
+
+
+class HuggingFaceAuthError(HuggingFaceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=401)
+
+
+class HuggingFaceTimeoutError(HuggingFaceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=504)
+
+
+class HuggingFaceNetworkError(HuggingFaceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=503)
+
+
+class HuggingFaceResponseError(HuggingFaceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message=message, status_code=502)
 
 
 def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
@@ -24,7 +65,13 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
     Raises:
         Exception: If API call fails
     """
-    config = get_huggingface_config()
+    try:
+        config = get_huggingface_config()
+    except RuntimeError as exc:
+        logger.error("Hugging Face config error: %s", exc)
+        raise HuggingFaceConfigError(
+            "Hugging Face is not configured on the server."
+        )
     
     headers = {
         "Authorization": f"Bearer {config.api_token}",
@@ -48,21 +95,50 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
             timeout=REQUEST_TIMEOUT
         )
         
+        if response.status_code in {401, 403}:
+            logger.warning(
+                "Hugging Face auth failed with status %s (%s)",
+                response.status_code,
+                config.safe_summary(),
+            )
+            raise HuggingFaceAuthError(
+                "Hugging Face token is invalid or expired."
+            )
+
         if response.status_code == 503:
-            # Model is loading
-            raise Exception("The AI model is currently loading. Please try again in a few moments.")
+            logger.warning(
+                "Hugging Face model unavailable (503) (%s)",
+                config.safe_summary(),
+            )
+            raise HuggingFaceResponseError(
+                "The AI model is currently loading. Please try again in a few moments."
+            )
         
         if response.status_code != 200:
             try:
                 error_detail = response.json().get("error", "Unknown error")
             except ValueError:
                 error_detail = response.text.strip() or "Unknown error"
-            raise Exception(f"Hugging Face API error: {error_detail}")
+            logger.warning(
+                "Hugging Face API error status=%s detail=%s (%s)",
+                response.status_code,
+                str(error_detail)[:200],
+                config.safe_summary(),
+            )
+            raise HuggingFaceResponseError(
+                f"Hugging Face API error: {error_detail}"
+            )
         
         try:
             result = response.json()
         except ValueError:
-            raise Exception("Hugging Face API returned a non-JSON response")
+            logger.warning(
+                "Hugging Face returned non-JSON response (%s)",
+                config.safe_summary(),
+            )
+            raise HuggingFaceResponseError(
+                "Hugging Face API returned a non-JSON response"
+            )
         
         # OpenAI-compatible response format
         if isinstance(result, dict):
@@ -76,14 +152,31 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
             generated_text = ""
         
         if not generated_text or generated_text.strip() == "":
-            raise Exception("Model returned empty response")
+            logger.warning(
+                "Hugging Face returned empty response (%s)",
+                config.safe_summary(),
+            )
+            raise HuggingFaceResponseError("Model returned empty response")
         
         return generated_text.strip()
     
     except requests.exceptions.Timeout:
-        raise Exception("Request to Hugging Face API timed out. Please try again.")
-    except requests.exceptions.RequestException as e:
-        raise Exception(f"Network error: {str(e)}")
+        logger.warning(
+            "Hugging Face request timed out (%s)",
+            config.safe_summary(),
+        )
+        raise HuggingFaceTimeoutError(
+            "Request to Hugging Face API timed out. Please try again."
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.warning(
+            "Hugging Face network error: %s (%s)",
+            str(exc),
+            config.safe_summary(),
+        )
+        raise HuggingFaceNetworkError(
+            "Network error while calling Hugging Face API. Please try again."
+        )
 
 
 def generate_story(prompt: str, age: int) -> str:
