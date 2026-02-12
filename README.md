@@ -92,17 +92,25 @@ The FastAPI project structure was reviewed to separate runtime-critical files fr
 pip install -r requirements.txt
 ```
 
-### 4. Create `.env` File
+### 4. Required Environment Variables
 
 Create a file named `.env` in the project root with the following content:
 
 ```
-HUGGINGFACE_API_TOKEN=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
-HUGGINGFACE_API_URL=https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2
-API_TOKEN=change_me
+HUGGINGFACE_API_TOKEN=hf_your_token_here
+HUGGINGFACE_API_URL=https://router.huggingface.co/v1/chat/completions
+HUGGINGFACE_MODEL=mistralai/Mistral-7B-Instruct-v0.2
+
+KIDDOLAND_AUTH_SECRET=change_me
+KIDDOLAND_AUTH_TTL_SECONDS=3600
+KIDDOLAND_AUTH_USERS=[{"email":"parent@kiddoland.local","password":"Parent123!","role":"Parent","modes":["home"]}]
+
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/
+MONGODB_DB_NAME=kiddoland
+MONGODB_USERS_COLLECTION=users
 ```
 
-Replace `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` with your actual Hugging Face token from step 2, and set `API_TOKEN` to any secret string you want to use for authorization.
+Replace `hf_your_token_here` with your actual Hugging Face token from step 2. The `KIDDOLAND_AUTH_USERS` value is optional; if omitted, demo users are created at runtime.
 
 ### 5. Run the Server
 
@@ -134,6 +142,25 @@ Bearer <API_TOKEN>
 ```
 
 Use the same value you set in `.env`.
+
+### 7. Verify Hugging Face Integration
+
+Start the server, then run the verification script:
+
+```bash
+python scripts/verify_hf_integration.py
+```
+
+Optional overrides:
+
+```bash
+set KIDDOLAND_API_BASE_URL=http://127.0.0.1:8000
+set KIDDOLAND_TEST_EMAIL=parent@kiddoland.local
+set KIDDOLAND_TEST_PASSWORD=Parent123!
+set KIDDOLAND_TEST_MODE=home
+set KIDDOLAND_TEST_AGE=8
+set KIDDOLAND_TEST_PROMPT=Write a short story about a friendly robot
+```
 
 ## API Endpoints
 
