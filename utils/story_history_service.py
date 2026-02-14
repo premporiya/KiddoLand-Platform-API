@@ -1,0 +1,86 @@
+"""
+Persistence service for AI story history records.
+"""
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Literal, Optional
+
+from pymongo import errors
+
+from utils.mongo import get_collection
+
+logger = logging.getLogger(__name__)
+_indexes_initialized = False
+
+
+def _now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _validate_required_text(value: str, field_name: str) -> str:
+    cleaned = value.strip() if isinstance(value, str) else ""
+    if not cleaned:
+        raise ValueError(f"{field_name} is required")
+    return cleaned
+
+
+def save_story_record(
+    *,
+    user_id: str,
+    child_name: str,
+    prompt: str,
+    story: str,
+    age: Optional[int],
+    mode: str,
+    record_type: Literal["generate", "rewrite"],
+) -> bool:
+    """
+    Save a story history record.
+
+    Returns True when persisted, False when persistence is unavailable.
+    Raises ValueError for invalid required field values.
+    """
+    cleaned_user_id = _validate_required_text(user_id, "user_id")
+    cleaned_child_name = _validate_required_text(child_name, "child_name")
+    cleaned_prompt = _validate_required_text(prompt, "prompt")
+    cleaned_story = _validate_required_text(story, "story")
+
+    if record_type not in {"generate", "rewrite"}:
+        raise ValueError("type must be either 'generate' or 'rewrite'")
+
+    collection_name = os.getenv("MONGODB_STORY_HISTORY_COLLECTION", "story_history")
+    collection = get_collection(collection_name)
+    if collection is None:
+        return False
+
+    global _indexes_initialized
+    if not _indexes_initialized:
+        try:
+            collection.create_index("user_id")
+            collection.create_index("created_at")
+            _indexes_initialized = True
+        except errors.PyMongoError as exc:
+            logger.warning("Failed to initialize story history indexes: %s", str(exc))
+
+    timestamp_utc = _now_utc()
+    document = {
+        "user_id": cleaned_user_id,
+        "child_name": cleaned_child_name,
+        "prompt": cleaned_prompt,
+        "story": cleaned_story,
+        "age": age,
+        "mode": mode,
+        "type": record_type,
+        "created_at": timestamp_utc,
+        "updated_at": timestamp_utc,
+    }
+
+    try:
+        collection.insert_one(document)
+        return True
+    except errors.PyMongoError as exc:
+        logger.warning("Failed to persist story history record: %s", str(exc))
+        return False
