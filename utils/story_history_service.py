@@ -84,3 +84,45 @@ def save_story_record(
     except errors.PyMongoError as exc:
         logger.warning("Failed to persist story history record: %s", str(exc))
         return False
+
+
+def list_story_records(*, user_id: str, limit: int = 50) -> list[dict]:
+    """
+    List story history records for a user sorted newest first.
+    """
+    cleaned_user_id = _validate_required_text(user_id, "user_id")
+    collection_name = os.getenv("MONGODB_STORY_HISTORY_COLLECTION", "story_history")
+    collection = get_collection(collection_name)
+    if collection is None:
+        return []
+
+    safe_limit = max(1, min(limit, 200))
+
+    try:
+        cursor = (
+            collection.find({"user_id": cleaned_user_id})
+            .sort("created_at", -1)
+            .limit(safe_limit)
+        )
+
+        records: list[dict] = []
+        for doc in cursor:
+            records.append(
+                {
+                    "id": str(doc.get("_id")),
+                    "user_id": str(doc.get("user_id", "")),
+                    "child_name": str(doc.get("child_name", "")),
+                    "prompt": str(doc.get("prompt", "")),
+                    "story": str(doc.get("story", "")),
+                    "age": doc.get("age"),
+                    "mode": str(doc.get("mode", "")),
+                    "type": str(doc.get("type", "")),
+                    "created_at": doc.get("created_at"),
+                    "updated_at": doc.get("updated_at"),
+                }
+            )
+
+        return records
+    except errors.PyMongoError as exc:
+        logger.warning("Failed to list story history records: %s", str(exc))
+        return []

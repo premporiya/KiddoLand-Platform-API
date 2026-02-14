@@ -2,6 +2,7 @@
 Pydantic Schemas for AI sample endpoint
 """
 from typing import Literal
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -92,3 +93,20 @@ class AiSaveFavoriteResponse(BaseModel):
                 "message": "Story saved to favorites.",
             }
         }
+
+
+class AiStoryHistoryItem(BaseModel):
+    id: str
+    user_id: str
+    child_name: str
+    prompt: str
+    story: str
+    age: int | None
+    mode: str
+    type: Literal["generate", "rewrite"]
+    created_at: datetime | None
+    updated_at: datetime | None
+
+
+class AiStoryHistoryResponse(BaseModel):
+    items: list[AiStoryHistoryItem]

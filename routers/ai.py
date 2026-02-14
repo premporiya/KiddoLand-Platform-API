@@ -13,13 +13,14 @@ from schemas.ai import (
     AiSampleResponse,
     AiSaveFavoriteRequest,
     AiSaveFavoriteResponse,
+    AiStoryHistoryResponse,
 )
 from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
 from utils.huggingface_client import HuggingFaceError, sample_completion
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.story_favorites_service import save_favorite_record
-from utils.story_history_service import save_story_record
+from utils.story_history_service import list_story_records, save_story_record
 
 logger = logging.getLogger(__name__)
 
@@ -143,3 +144,11 @@ def save_ai_favorite_endpoint(
         saved=False,
         message="Favorite save is currently unavailable.",
     )
+
+
+@router.get("/history", response_model=AiStoryHistoryResponse)
+def get_story_history_endpoint(
+    current_user: AuthUser = Depends(get_current_user),
+) -> AiStoryHistoryResponse:
+    items = list_story_records(user_id=current_user.user_id, limit=100)
+    return AiStoryHistoryResponse(items=items)
