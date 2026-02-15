@@ -2,78 +2,33 @@
 Story Router
 Handles story generation and rewriting endpoints
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from schemas.story import (
-    StoryGenerateRequest,
-    StoryGenerateResponse,
     StoryRewriteRequest,
     StoryRewriteResponse,
     ErrorResponse
 )
 from utils.huggingface_client import (
     HuggingFaceError,
-    generate_story,
     rewrite_story,
 )
-from utils.safety_filter import is_content_safe
+from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.auth_service import get_current_user
+from schemas.auth import AuthUser
+from utils.story_history_service import save_story_record
 
-router = APIRouter(dependencies=[Depends(get_current_user)])
+logger = logging.getLogger(__name__)
 
-
-@router.post("/generate", response_model=StoryGenerateResponse)
-def generate_story_endpoint(request: StoryGenerateRequest):
-    """
-    Generate a new story based on user prompt.
-    
-    - **age**: Child's age (1-18)
-    - **prompt**: Free-form story prompt (any text)
-    
-    Returns generated story text.
-    """
-    # Validate age range
-    if request.age < 1 or request.age > 18:
-        raise HTTPException(
-            status_code=400,
-            detail="Age must be between 1 and 18"
-        )
-    
-    # Validate prompt
-    if not request.prompt or len(request.prompt.strip()) == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Prompt cannot be empty"
-        )
-    
-    try:
-        # Generate story using Hugging Face
-        generated_story = generate_story(
-            prompt=request.prompt,
-            age=request.age
-        )
-        
-        # Safety check
-        if not is_content_safe(generated_story):
-            return StoryGenerateResponse(
-                story="I'm sorry, but I cannot generate this story as it contains inappropriate content for children. Please try a different prompt."
-            )
-        
-        return StoryGenerateResponse(story=generated_story)
-    
-    except HuggingFaceError as exc:
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail=f"Story generation failed: {str(exc)}",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Story generation failed: {str(e)}"
-        )
+router = APIRouter()
 
 
 @router.post("/rewrite", response_model=StoryRewriteResponse)
-def rewrite_story_endpoint(request: StoryRewriteRequest):
+def rewrite_story_endpoint(
+    request: StoryRewriteRequest,
+    current_user: AuthUser = Depends(get_current_user),
+):
     """
     Rewrite an existing story based on user instructions.
     
@@ -84,10 +39,10 @@ def rewrite_story_endpoint(request: StoryRewriteRequest):
     Returns rewritten story text.
     """
     # Validate age range
-    if request.age < 1 or request.age > 18:
+    if request.age < 1 or request.age > 10:
         raise HTTPException(
             status_code=400,
-            detail="Age must be between 1 and 18"
+            detail="Age must be between 1 and 10"
         )
     
     # Validate inputs
@@ -96,18 +51,54 @@ def rewrite_story_endpoint(request: StoryRewriteRequest):
             status_code=400,
             detail="Original story cannot be empty"
         )
+
+    cleaned_original_story = clean_text_for_model(request.original_story)
+    if not cleaned_original_story:
+        raise HTTPException(
+            status_code=400,
+            detail="Original story cannot be empty"
+        )
+
+    if not is_content_safe(cleaned_original_story):
+        raise HTTPException(
+            status_code=400,
+            detail="Original story contains unsafe content and cannot be processed.",
+        )
     
     if not request.instruction or len(request.instruction.strip()) == 0:
         raise HTTPException(
             status_code=400,
             detail="Rewrite instruction cannot be empty"
         )
+
+    cleaned_instruction = clean_text_for_model(request.instruction)
+    if not cleaned_instruction:
+        raise HTTPException(
+            status_code=400,
+            detail="Rewrite instruction cannot be empty"
+        )
+
+    if not is_content_safe(cleaned_instruction):
+        raise HTTPException(
+            status_code=400,
+            detail="Rewrite instruction contains unsafe content and cannot be processed.",
+        )
+
+    child_name = extract_child_name(cleaned_instruction) or extract_child_name(cleaned_original_story)
+    if child_name is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Child name is required. Please include at least one child name "
+                "in the instruction or original story."
+            ),
+        )
     
     try:
         # Rewrite story using Hugging Face
         rewritten_story = rewrite_story(
-            original_story=request.original_story,
-            instruction=request.instruction,
+            original_story=cleaned_original_story,
+            instruction=cleaned_instruction,
             age=request.age
         )
         
@@ -117,6 +108,19 @@ def rewrite_story_endpoint(request: StoryRewriteRequest):
                 story="I'm sorry, but the rewritten story contains inappropriate content for children. Please try a different instruction."
             )
         
+        try:
+            save_story_record(
+                user_id=current_user.user_id,
+                child_name=child_name,
+                prompt=request.instruction,
+                story=rewritten_story,
+                age=request.age,
+                mode=current_user.mode,
+                record_type="rewrite",
+            )
+        except ValueError as exc:
+            logger.warning("Story history validation failed: %s", str(exc))
+
         return StoryRewriteResponse(story=rewritten_story)
     
     except HuggingFaceError as exc:

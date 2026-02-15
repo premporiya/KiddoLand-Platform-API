@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(story.router, prefix="/story", tags=["Story"])
+app.include_router(story.router, prefix="/story", tags=["AI"])
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(ai.router, prefix="/ai", tags=["AI"])
 
