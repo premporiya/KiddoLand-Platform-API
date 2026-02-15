@@ -4,7 +4,7 @@ import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from utils.story_favorites_service import get_favorite_stories_for_user
+from utils.story_history_service import list_favorite_records, mark_story_favorite
 from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
 
@@ -20,9 +20,9 @@ router = APIRouter()
 @router.get("/favorites")
 def get_favorites(current_user: AuthUser = Depends(get_current_user)):
     """
-    Get all favorite stories for the current user, ensuring child_name is present in each document.
+    Get all favorite stories for the current user from the story_history collection.
     """
-    favorites = get_favorite_stories_for_user(current_user)
+    favorites = list_favorite_records(user_id=current_user.user_id, limit=200)
     return favorites
 
 from schemas.ai import (
@@ -36,8 +36,7 @@ from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
 from utils.huggingface_client import HuggingFaceError, sample_completion
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
-from utils.story_favorites_service import save_favorite_record
-from utils.story_history_service import list_story_records, save_story_record
+from utils.story_history_service import list_story_records, save_story_record, mark_story_favorite
 
 
 logger = logging.getLogger(__name__)
@@ -142,13 +141,14 @@ def save_ai_favorite_endpoint(
     Persist a story as favorite after explicit user action.
     """
     try:
-        saved = save_favorite_record(
+        saved = mark_story_favorite(
             user_id=current_user.user_id,
             prompt=request.prompt,
             story=request.story,
             age=request.age,
             mode=current_user.mode,
             record_type=request.type,
+            is_favorite=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

@@ -102,6 +102,7 @@ class AiStoryHistoryItem(BaseModel):
     prompt: str
     story: str
     age: int | None
+    is_favorite: bool = False
     mode: str
     type: Literal["generate", "rewrite"]
     created_at: datetime | None
