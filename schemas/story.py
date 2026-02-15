@@ -9,8 +9,8 @@ class StoryGenerateRequest(BaseModel):
     age: int = Field(
         ...,
         ge=1,
-        le=18,
-        description="Child's age (1-18)"
+        le=10,
+        description="Child's age (1-10)"
     )
     prompt: str = Field(
         ...,
@@ -48,8 +48,8 @@ class StoryRewriteRequest(BaseModel):
     age: int = Field(
         ...,
         ge=1,
-        le=18,
-        description="Child's age (1-18)"
+        le=10,
+        description="Child's age (1-10)"
     )
     original_story: str = Field(
         ...,
