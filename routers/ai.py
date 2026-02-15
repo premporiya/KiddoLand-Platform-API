@@ -1,12 +1,29 @@
+
+import logging
+import re
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Response
+from utils.story_favorites_service import get_favorite_stories_for_user
+from schemas.auth import AuthUser
+from utils.auth_service import get_current_user
+
 """
 AI Router
 Sample endpoint for testing Hugging Face integration
 """
-import logging
-import re
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+
+router = APIRouter()
+
+# GET /ai/favorites endpoint
+@router.get("/favorites")
+def get_favorites(current_user: AuthUser = Depends(get_current_user)):
+    """
+    Get all favorite stories for the current user, ensuring child_name is present in each document.
+    """
+    favorites = get_favorite_stories_for_user(current_user)
+    return favorites
 
 from schemas.ai import (
     AiSampleRequest,
@@ -22,9 +39,8 @@ from utils.safety_filter import clean_text_for_model, extract_child_name, is_con
 from utils.story_favorites_service import save_favorite_record
 from utils.story_history_service import list_story_records, save_story_record
 
-logger = logging.getLogger(__name__)
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _extract_age_from_prompt(prompt: str) -> Optional[int]:

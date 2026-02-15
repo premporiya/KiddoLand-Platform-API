@@ -1,7 +1,27 @@
+
+from __future__ import annotations
+
+def get_favorite_stories_for_user(user) -> list:
+    """
+    Fetch all favorite stories for a user, ensuring child_name is present in each document.
+    """
+    collection_name = os.getenv("MONGODB_STORY_FAVORITES_COLLECTION", "story_favorites")
+    collection = get_collection(collection_name)
+    if collection is None:
+        return []
+    favorites = list(collection.find({"user_id": user.user_id}))
+    for fav in favorites:
+        if "child_name" not in fav or not fav["child_name"]:
+            fav["child_name"] = "Unknown"
+    # Convert ObjectId to string for JSON serialization
+    for fav in favorites:
+        if "_id" in fav:
+            fav["id"] = str(fav["_id"])
+            del fav["_id"]
+    return favorites
 """
 Persistence service for story favorite records.
 """
-from __future__ import annotations
 
 import logging
 import os
