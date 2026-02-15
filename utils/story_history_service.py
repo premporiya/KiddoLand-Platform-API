@@ -201,23 +201,36 @@ def mark_story_favorite(
         return False
 
     timestamp_utc = _now_utc()
-
-    filter_doc = {"user_id": cleaned_user_id, "prompt": cleaned_prompt, "story": cleaned_story}
-    update_doc = {
-        "$set": {"is_favorite": bool(is_favorite), "updated_at": timestamp_utc},
-        "$setOnInsert": {
-            "user_id": cleaned_user_id,
-            "child_name": "",
-            "prompt": cleaned_prompt,
-            "story": cleaned_story,
-            "age": age,
-            "mode": mode,
-            "type": record_type,
-            "created_at": timestamp_utc,
-        },
-    }
-
+    # Try to find an existing history record by exact story match first.
     try:
+        existing = collection.find_one({"user_id": cleaned_user_id, "story": cleaned_story})
+        if existing:
+            try:
+                collection.update_one(
+                    {"_id": existing.get("_id")},
+                    {"$set": {"is_favorite": bool(is_favorite), "updated_at": timestamp_utc}},
+                )
+                return True
+            except errors.PyMongoError as exc:
+                logger.warning("Failed to update existing story_history favorite flag: %s", str(exc))
+                return False
+
+        # No exact-story match found — fall back to upsert by prompt+story
+        filter_doc = {"user_id": cleaned_user_id, "prompt": cleaned_prompt, "story": cleaned_story}
+        update_doc = {
+            "$set": {"is_favorite": bool(is_favorite), "updated_at": timestamp_utc},
+            "$setOnInsert": {
+                "user_id": cleaned_user_id,
+                "child_name": "",
+                "prompt": cleaned_prompt,
+                "story": cleaned_story,
+                "age": age,
+                "mode": mode,
+                "type": record_type,
+                "created_at": timestamp_utc,
+            },
+        }
+
         collection.update_one(filter_doc, update_doc, upsert=True)
         return True
     except errors.PyMongoError as exc:
