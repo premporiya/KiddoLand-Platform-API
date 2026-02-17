@@ -236,3 +236,93 @@ def mark_story_favorite(
     except errors.PyMongoError as exc:
         logger.warning("Failed to mark story favorite: %s", str(exc))
         return False
+
+
+def delete_story_record(*, user_id: str, story_id: str) -> bool:
+    """
+    Delete a story history record by ID for a specific user.
+    
+    Returns True if deleted successfully, False otherwise.
+    Raises ValueError for invalid required field values.
+    """
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    
+    cleaned_user_id = _validate_required_text(user_id, "user_id")
+    cleaned_story_id = _validate_required_text(story_id, "story_id")
+    
+    # Validate ObjectId format
+    try:
+        object_id = ObjectId(cleaned_story_id)
+    except InvalidId:
+        raise ValueError(f"Invalid story_id format: {cleaned_story_id}")
+    
+    collection_name = os.getenv("MONGODB_STORY_HISTORY_COLLECTION", "story_history")
+    collection = get_collection(collection_name)
+    if collection is None:
+        return False
+    
+    try:
+        result = collection.delete_one({
+            "_id": object_id,
+            "user_id": cleaned_user_id  # Ensure user can only delete their own stories
+        })
+        return result.deleted_count > 0
+    except errors.PyMongoError as exc:
+        logger.warning("Failed to delete story history record: %s", str(exc))
+        return False
+
+
+def toggle_story_favorite(*, user_id: str, story_id: str) -> Optional[bool]:
+    """
+    Toggle the favorite status of a story by ID.
+    
+    Returns the new favorite status (True/False) if successful, None if story not found.
+    Raises ValueError for invalid required field values.
+    """
+    from bson import ObjectId
+    from bson.errors import InvalidId
+    
+    cleaned_user_id = _validate_required_text(user_id, "user_id")
+    cleaned_story_id = _validate_required_text(story_id, "story_id")
+    
+    # Validate ObjectId format
+    try:
+        object_id = ObjectId(cleaned_story_id)
+    except InvalidId:
+        raise ValueError(f"Invalid story_id format: {cleaned_story_id}")
+    
+    collection_name = os.getenv("MONGODB_STORY_HISTORY_COLLECTION", "story_history")
+    collection = get_collection(collection_name)
+    if collection is None:
+        return None
+    
+    timestamp_utc = _now_utc()
+    
+    try:
+        # First, find the story
+        story = collection.find_one({
+            "_id": object_id,
+            "user_id": cleaned_user_id
+        })
+        
+        if not story:
+            return None
+        
+        # Toggle the is_favorite status
+        current_favorite = bool(story.get("is_favorite", False))
+        new_favorite = not current_favorite
+        
+        # Update the record
+        result = collection.update_one(
+            {"_id": object_id, "user_id": cleaned_user_id},
+            {"$set": {"is_favorite": new_favorite, "updated_at": timestamp_utc}}
+        )
+        
+        if result.modified_count > 0:
+            return new_favorite
+        
+        return None
+    except errors.PyMongoError as exc:
+        logger.warning("Failed to toggle favorite status: %s", str(exc))
+        return None

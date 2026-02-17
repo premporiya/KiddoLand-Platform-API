@@ -4,7 +4,7 @@ import re
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from utils.story_history_service import list_favorite_records, mark_story_favorite
+from utils.story_history_service import list_favorite_records, mark_story_favorite, delete_story_record
 from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
 
@@ -168,3 +168,65 @@ def get_story_history_endpoint(
 ) -> AiStoryHistoryResponse:
     items = list_story_records(user_id=current_user.user_id, limit=100)
     return AiStoryHistoryResponse(items=items)
+
+
+@router.delete("/history/{story_id}")
+def delete_story_endpoint(
+    story_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """
+    Delete a story from history by ID.
+    """
+    try:
+        deleted = delete_story_record(user_id=current_user.user_id, story_id=story_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail="Story not found or already deleted."
+            )
+        return {"success": True, "message": "Story deleted successfully."}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Failed to delete story {story_id}: {str(exc)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to delete story right now."
+        )
+
+
+@router.patch("/history/{story_id}/favorite")
+def toggle_favorite_endpoint(
+    story_id: str,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """
+    Toggle favorite status of a story by ID.
+    Returns the new favorite status.
+    """
+    from utils.story_history_service import toggle_story_favorite
+    
+    try:
+        new_status = toggle_story_favorite(
+            user_id=current_user.user_id,
+            story_id=story_id
+        )
+        if new_status is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Story not found."
+            )
+        return {
+            "success": True,
+            "is_favorite": new_status,
+            "message": "Added to favorites." if new_status else "Removed from favorites."
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error(f"Failed to toggle favorite for story {story_id}: {str(exc)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to update favorite status right now."
+        )
