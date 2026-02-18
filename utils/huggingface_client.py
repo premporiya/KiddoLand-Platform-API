@@ -208,8 +208,8 @@ def generate_story(prompt: str, age: int) -> str:
         {"role": "user", "content": user_msg},
     ]
 
-    # Call Hugging Face API (OpenAI-compatible)
-    story = _call_huggingface_api(messages, max_length=1500)
+     # Call Hugging Face API (OpenAI-compatible)
+    story = _call_huggingface_api(messages, max_length=8000)
     
     return story
 
@@ -234,19 +234,21 @@ def rewrite_story(original_story: str, instruction: str, age: int) -> str:
         f"{age_guidance}"
     )
     user_msg = (
-        "Original Story:\n"
-        f"{original_story}\n\n"
-        f"Rewrite Instruction: {instruction}\n\n"
-        "Please rewrite the story according to the instruction above. "
-        "Keep it appropriate and enjoyable for the target age group."
-    )
+    "Original Story:\n"
+    f"{original_story}\n\n"
+    f"Rewrite Instruction: {instruction}\n\n"
+    "Rewrite the story according to the instruction above. "
+    "Keep the main characters and setting the same. "
+    "Ensure the rewritten story has a proper and natural ending. "
+    "Do NOT stop mid-sentence."
+)
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": user_msg},
     ]
 
     # Call Hugging Face API (OpenAI-compatible)
-    rewritten_story = _call_huggingface_api(messages, max_length=1500)
+    rewritten_story = _call_huggingface_api(messages, max_length=3000)
     
     return rewritten_story
 
@@ -265,7 +267,7 @@ def sample_completion(prompt: str) -> str:
         {"role": "system", "content": "You are a helpful assistant for kids."},
         {"role": "user", "content": prompt},
     ]
-    return _call_huggingface_api(messages, max_length=300)
+    return _call_huggingface_api(messages, max_length=800)
 
 
 def _get_age_guidance(age: int) -> str:
