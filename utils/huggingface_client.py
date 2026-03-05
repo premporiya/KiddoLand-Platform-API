@@ -270,6 +270,44 @@ def sample_completion(prompt: str) -> str:
     return _call_huggingface_api(messages, max_length=800)
 
 
+def generate_rhyme(prompt: str, age: int) -> str:
+    """
+    Generate a short rhyme or nursery rhyme based on user prompt and age.
+
+    Args:
+        prompt: User's rhyme prompt (free-form)
+        age: Child's age (1-18)
+
+    Returns:
+        Generated rhyme text
+    """
+    # Build age-appropriate system instruction using existing guidance
+    age_guidance = _get_age_guidance(age)
+
+    system_msg = (
+        "You are a creative children's poet. "
+        f"{age_guidance}"
+    )
+    user_msg = (
+        "Rhyme request: "
+        f"{prompt}\n\n"
+        "Write a short, rhyming poem or nursery rhyme based on this request. "
+        "Use simple vocabulary and short lines suitable for the target age. "
+        "Keep the rhyme playful and end with a clear, positive ending. "
+        "If a child's name is included in the prompt, incorporate it naturally into the rhyme."
+    )
+
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_msg},
+    ]
+
+    # Call Hugging Face API (OpenAI-compatible)
+    rhyme = _call_huggingface_api(messages, max_length=1200)
+
+    return rhyme
+
+
 def _get_age_guidance(age: int) -> str:
     """
     Get age-appropriate guidance for story generation.
