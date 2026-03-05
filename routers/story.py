@@ -6,13 +6,16 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from schemas.story import (
+    StoryGenerateRequest,
+    StoryGenerateResponse,
     StoryRewriteRequest,
     StoryRewriteResponse,
-    ErrorResponse
+    ErrorResponse,
 )
 from utils.huggingface_client import (
     HuggingFaceError,
     rewrite_story,
+    generate_rhyme,
 )
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.auth_service import get_current_user
@@ -22,6 +25,61 @@ from utils.story_history_service import save_story_record
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.post("/generate-rhyme", response_model=StoryGenerateResponse)
+def generate_rhyme_endpoint(
+    request: StoryGenerateRequest,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    """
+    Generate a short rhyme/nursery rhyme for a child. Reuses StoryGenerateRequest schema.
+    """
+    # Validate age
+    if request.age < 1 or request.age > 10:
+        raise HTTPException(status_code=400, detail="Age must be between 1 and 10")
+
+    cleaned_prompt = clean_text_for_model(request.prompt)
+    if not cleaned_prompt:
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+
+    if not is_content_safe(cleaned_prompt):
+        raise HTTPException(status_code=400, detail="Prompt contains unsafe content and cannot be processed.")
+
+    child_name = extract_child_name(cleaned_prompt)
+    if child_name is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Child name is required in the prompt. Please include at least one child name, e.g. 'for Emma, age 4'."
+            ),
+        )
+
+    try:
+        rhyme_text = generate_rhyme(cleaned_prompt, request.age)
+
+        if not is_content_safe(rhyme_text):
+            return StoryGenerateResponse(story="I'm sorry, but the generated rhyme contains inappropriate content for children.")
+
+        try:
+            save_story_record(
+                user_id=current_user.user_id,
+                child_name=child_name,
+                prompt=cleaned_prompt,
+                story=rhyme_text,
+                age=request.age,
+                mode=current_user.mode,
+                record_type="generate",
+            )
+        except ValueError as exc:
+            logger.warning("Story history validation failed: %s", str(exc))
+
+        return StoryGenerateResponse(story=rhyme_text)
+
+    except HuggingFaceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=f"Rhyme generation failed: {str(exc)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Rhyme generation failed: {str(exc)}")
 
 
 @router.post("/rewrite", response_model=StoryRewriteResponse)
