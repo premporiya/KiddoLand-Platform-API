@@ -85,7 +85,8 @@ def extract_child_name(text: str) -> Optional[str]:
 
     disallowed = {
         "a", "an", "the", "my", "our", "your", "their",
-        "kid", "child", "son", "daughter", "boy", "girl",
+        "kid", "kids", "child", "children", "son", "daughter", "boy", "girl",
+        "student", "students", "class", "classroom", "group",
         "story", "age", "years", "year", "old",
     }
 

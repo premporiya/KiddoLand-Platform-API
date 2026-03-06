@@ -41,9 +41,26 @@ from utils.story_history_service import list_story_records, save_story_record, m
 
 logger = logging.getLogger(__name__)
 
+WORD_AGE_MAP = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+}
+
 
 def _extract_age_from_prompt(prompt: str) -> Optional[int]:
+    range_pattern = r"\b(\d{1,2})\s*-\s*(\d{1,2})\s*(?:years?\s*old|year\s*old|yr\s*old|y/o)\b"
     patterns = [
+        range_pattern,
         r"\b(\d{1,2})\s*[- ]\s*year\s*[- ]\s*old\b",
         r"\b(\d{1,2})\s*(?:years?\s*old|year\s*old|yr\s*old|y/o)\b",
         r"\bage\s*(\d{1,2})\b",
@@ -56,11 +73,21 @@ def _extract_age_from_prompt(prompt: str) -> Optional[int]:
             continue
 
         try:
-            value = int(match.group(1))
+            if pattern == range_pattern and match.lastindex and match.lastindex >= 2:
+                value = int(match.group(1))
+            else:
+                value = int(match.group(1))
         except (TypeError, ValueError):
             continue
 
         if 1 <= value <= 10:
+            return value
+
+    word_pattern = r"\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"
+    match = re.search(word_pattern, prompt, re.IGNORECASE)
+    if match:
+        value = WORD_AGE_MAP.get(match.group(1).lower())
+        if value and 1 <= value <= 10:
             return value
 
     return None
@@ -94,15 +121,18 @@ def sample_ai_endpoint(
             ),
         )
 
-    child_name = extract_child_name(cleaned_prompt)
-    if child_name is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Child name is required in the prompt. "
-                "Please include at least one child name, for example: 'for Emma, age 7'."
-            ),
-        )
+    if current_user.mode == "institution":
+        child_name = "Class"
+    else:
+        child_name = extract_child_name(cleaned_prompt)
+        if child_name is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Child name is required in the prompt. "
+                    "Please include at least one child name, for example: 'for Emma, age 7'."
+                ),
+            )
 
     try:
         output = sample_completion(cleaned_prompt)
