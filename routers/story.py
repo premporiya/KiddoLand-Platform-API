@@ -142,15 +142,18 @@ def rewrite_story_endpoint(
             detail="Rewrite instruction contains unsafe content and cannot be processed.",
         )
 
-    child_name = extract_child_name(cleaned_instruction) or extract_child_name(cleaned_original_story)
-    if child_name is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Child name is required. Please include at least one child name "
-                "in the instruction or original story."
-            ),
-        )
+    if current_user.mode == "institution":
+        child_name = "Class"
+    else:
+        child_name = extract_child_name(cleaned_instruction) or extract_child_name(cleaned_original_story)
+        if child_name is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Child name is required. Please include at least one child name "
+                    "in the instruction or original story."
+                ),
+            )
     
     try:
         # Rewrite story using Hugging Face
