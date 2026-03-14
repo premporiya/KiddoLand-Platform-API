@@ -15,11 +15,16 @@ class AiSampleRequest(BaseModel):
         max_length=2000,
         description="Prompt for the sample AI response",
     )
+    include_tts: bool = Field(
+        default=False,
+        description="When true, also return TTS audio data for the generated output",
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "prompt": "Say hello to a curious 7-year-old who loves space.",
+                "include_tts": True,
             }
         }
 
@@ -30,11 +35,21 @@ class AiSampleResponse(BaseModel):
         ...,
         description="Generated response text",
     )
+    tts_audio_base64: str | None = Field(
+        default=None,
+        description="Base64-encoded audio payload when include_tts=true",
+    )
+    tts_media_type: str | None = Field(
+        default=None,
+        description="Media type of synthesized audio, for example audio/mpeg",
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "output": "Hi there, space explorer! Ready to zoom past the stars today?"
+                "output": "Hi there, space explorer! Ready to zoom past the stars today?",
+                "tts_audio_base64": "UklGRhQAAABXQVZFZm10IBAAAAABAAEA...",
+                "tts_media_type": "audio/mpeg",
             }
         }
 
