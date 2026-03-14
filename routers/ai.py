@@ -1,6 +1,7 @@
 
 import logging
 import re
+import base64
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -34,7 +35,7 @@ from schemas.ai import (
 )
 from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
-from utils.huggingface_client import HuggingFaceError, sample_completion
+from utils.huggingface_client import HuggingFaceError, sample_completion, generate_tts_audio
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.story_history_service import list_story_records, save_story_record, mark_story_favorite
 
@@ -136,6 +137,13 @@ def sample_ai_endpoint(
 
     try:
         output = sample_completion(cleaned_prompt)
+        tts_audio_base64 = None
+        tts_media_type = None
+        if request.include_tts:
+            audio_bytes, media_type = generate_tts_audio(output)
+            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+            tts_media_type = media_type
+
         try:
             save_story_record(
                 user_id=current_user.user_id,
@@ -149,7 +157,11 @@ def sample_ai_endpoint(
         except ValueError as exc:
             logger.warning("Auto-save story history validation failed: %s", str(exc))
 
-        return AiSampleResponse(output=output)
+        return AiSampleResponse(
+            output=output,
+            tts_audio_base64=tts_audio_base64,
+            tts_media_type=tts_media_type,
+        )
     except HuggingFaceError as exc:
         raise HTTPException(
             status_code=exc.status_code,

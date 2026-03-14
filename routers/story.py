@@ -2,6 +2,7 @@
 Story Router
 Handles story generation and rewriting endpoints
 """
+import base64
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,6 +17,7 @@ from utils.huggingface_client import (
     HuggingFaceError,
     rewrite_story,
     generate_rhyme,
+    generate_tts_audio,
 )
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.auth_service import get_current_user
@@ -61,6 +63,13 @@ def generate_rhyme_endpoint(
         if not is_content_safe(rhyme_text):
             return StoryGenerateResponse(story="I'm sorry, but the generated rhyme contains inappropriate content for children.")
 
+        tts_audio_base64 = None
+        tts_media_type = None
+        if request.include_tts:
+            audio_bytes, media_type = generate_tts_audio(rhyme_text)
+            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+            tts_media_type = media_type
+
         try:
             save_story_record(
                 user_id=current_user.user_id,
@@ -74,7 +83,11 @@ def generate_rhyme_endpoint(
         except ValueError as exc:
             logger.warning("Story history validation failed: %s", str(exc))
 
-        return StoryGenerateResponse(story=rhyme_text)
+        return StoryGenerateResponse(
+            story=rhyme_text,
+            tts_audio_base64=tts_audio_base64,
+            tts_media_type=tts_media_type,
+        )
 
     except HuggingFaceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=f"Rhyme generation failed: {str(exc)}")
@@ -168,6 +181,13 @@ def rewrite_story_endpoint(
             return StoryRewriteResponse(
                 story="I'm sorry, but the rewritten story contains inappropriate content for children. Please try a different instruction."
             )
+
+        tts_audio_base64 = None
+        tts_media_type = None
+        if request.include_tts:
+            audio_bytes, media_type = generate_tts_audio(rewritten_story)
+            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+            tts_media_type = media_type
         
         try:
             save_story_record(
@@ -182,7 +202,11 @@ def rewrite_story_endpoint(
         except ValueError as exc:
             logger.warning("Story history validation failed: %s", str(exc))
 
-        return StoryRewriteResponse(story=rewritten_story)
+        return StoryRewriteResponse(
+            story=rewritten_story,
+            tts_audio_base64=tts_audio_base64,
+            tts_media_type=tts_media_type,
+        )
     
     except HuggingFaceError as exc:
         raise HTTPException(
