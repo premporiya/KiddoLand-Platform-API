@@ -5,7 +5,9 @@ Handles communication with Hugging Face Inference API
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
+from typing import Tuple
 
 import requests
 
@@ -15,6 +17,9 @@ from utils.config import get_huggingface_config
 REQUEST_TIMEOUT = 60  # seconds
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TTS_MODEL = "espnet/kan-bayashi_ljspeech_vits"
+DEFAULT_TTS_API_URL_TEMPLATE = "https://api-inference.huggingface.co/models/{model}"
 
 
 @dataclass
@@ -306,6 +311,92 @@ def generate_rhyme(prompt: str, age: int) -> str:
     rhyme = _call_huggingface_api(messages, max_length=1200)
 
     return rhyme
+
+
+def generate_tts_audio(text: str) -> Tuple[bytes, str]:
+    """
+    Generate speech audio from plain text using Hugging Face Inference API.
+
+    Args:
+        text: Text to convert into speech
+
+    Returns:
+        Tuple (audio_bytes, media_type)
+    """
+    if not text or not text.strip():
+        raise HuggingFaceResponseError("TTS text cannot be empty")
+
+    try:
+        config = get_huggingface_config()
+    except RuntimeError as exc:
+        logger.error("Hugging Face config error: %s", exc)
+        raise HuggingFaceConfigError(
+            "Hugging Face is not configured on the server."
+        )
+
+    tts_model = os.getenv("HUGGINGFACE_TTS_MODEL", "").strip() or DEFAULT_TTS_MODEL
+    tts_url_template = os.getenv("HUGGINGFACE_TTS_API_URL", "").strip() or DEFAULT_TTS_API_URL_TEMPLATE
+    tts_url = tts_url_template.format(model=tts_model)
+
+    headers = {
+        "Authorization": f"Bearer {config.api_token}",
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg, audio/wav, audio/flac, audio/ogg, application/octet-stream",
+    }
+    payload = {"inputs": text.strip()}
+
+    try:
+        response = requests.post(
+            tts_url,
+            headers=headers,
+            json=payload,
+            timeout=REQUEST_TIMEOUT,
+        )
+
+        if response.status_code in {401, 403}:
+            logger.warning("Hugging Face TTS auth failed with status %s", response.status_code)
+            raise HuggingFaceAuthError("Hugging Face token is invalid or expired.")
+
+        if response.status_code == 503:
+            raise HuggingFaceResponseError(
+                "The TTS model is currently loading. Please try again in a few moments."
+            )
+
+        if response.status_code != 200:
+            error_detail = response.text.strip() or "Unknown error"
+            try:
+                parsed = response.json()
+                if isinstance(parsed, dict):
+                    error_detail = parsed.get("error") or parsed.get("message") or error_detail
+            except ValueError:
+                pass
+            raise HuggingFaceResponseError(f"Hugging Face TTS API error: {error_detail}")
+
+        media_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
+        if not media_type:
+            media_type = "application/octet-stream"
+
+        # Some hosted endpoints return octet-stream for binary audio; accept it.
+        if not (media_type.startswith("audio/") or media_type == "application/octet-stream"):
+            logger.warning("Unexpected TTS content-type: %s", media_type)
+            raise HuggingFaceResponseError(
+                "TTS endpoint returned a non-audio response."
+            )
+
+        if not response.content:
+            raise HuggingFaceResponseError("TTS endpoint returned empty audio data.")
+
+        return response.content, media_type
+
+    except requests.exceptions.Timeout:
+        raise HuggingFaceTimeoutError(
+            "Request to Hugging Face TTS API timed out. Please try again."
+        )
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Hugging Face TTS network error: %s", str(exc))
+        raise HuggingFaceNetworkError(
+            "Network error while calling Hugging Face TTS API. Please try again."
+        )
 
 
 def _get_age_guidance(age: int) -> str:

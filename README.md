@@ -100,6 +100,8 @@ Create a file named `.env` in the project root with the following content:
 HUGGINGFACE_API_TOKEN=hf_your_token_here
 HUGGINGFACE_API_URL=https://router.huggingface.co/v1/chat/completions
 HUGGINGFACE_MODEL=mistralai/Mistral-7B-Instruct-v0.2
+HUGGINGFACE_TTS_MODEL=espnet/kan-bayashi_ljspeech_vits
+HUGGINGFACE_TTS_API_URL=https://api-inference.huggingface.co/models/{model}
 
 KIDDOLAND_AUTH_SECRET=change_me
 KIDDOLAND_AUTH_TTL_SECONDS=3600
@@ -110,7 +112,7 @@ MONGODB_DB_NAME=kiddoland
 MONGODB_USERS_COLLECTION=users
 ```
 
-Replace `hf_your_token_here` with your actual Hugging Face token from step 2. The `KIDDOLAND_AUTH_USERS` value is optional; if omitted, demo users are created at runtime.
+Replace `hf_your_token_here` with your actual Hugging Face token from step 2. The `KIDDOLAND_AUTH_USERS` value is optional; if omitted, demo users are created at runtime. The TTS variables are optional; defaults are used if not set.
 
 ### 5. Run the Server
 
@@ -224,6 +226,36 @@ POST /story/rewrite
   "instruction": "Change the middle part to make it funnier"
 }
 ```
+
+### 4. Sample AI (Optional TTS on Existing Endpoint)
+
+```
+POST /ai/sample
+```
+
+**Request Body:**
+
+```json
+{
+  "prompt": "Say hello to a curious 7-year-old who loves space.",
+  "include_tts": true
+}
+```
+
+**Response:**
+
+```json
+{
+  "output": "Hi there, space explorer! Ready to zoom past the stars today?",
+  "tts_audio_base64": "UklGRhQAAABXQVZFZm10IBAAAAABAAEA...",
+  "tts_media_type": "audio/mpeg"
+}
+```
+
+Notes:
+- `include_tts` defaults to `false`.
+- Existing frontend calls that only send `prompt` continue to work unchanged.
+- When `include_tts=false`, `tts_audio_base64` and `tts_media_type` are `null`.
 
 **Response:**
 
