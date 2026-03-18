@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pymongo import MongoClient, errors
+from bson import ObjectId
 
 from schemas.auth import AuthUser
 
@@ -25,6 +26,13 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 _user_cache: Optional[List[Dict[str, object]]] = None
 _mongo_client: Optional[MongoClient] = None
 _mongo_collection = None
+
+
+def _optional_str(value: object) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text if text else None
 
 
 def _b64url_encode(data: bytes) -> str:
@@ -86,6 +94,11 @@ def _deserialize_db_user(doc: Dict[str, object]) -> Dict[str, object]:
         "password_salt": base64.b64decode(doc.get("password_salt", "")),
         "role": str(doc.get("role", "")),
         "modes": list(doc.get("modes") or []),
+        "name": _optional_str(doc.get("name")),
+        "username": _optional_str(doc.get("username")),
+        "first_name": _optional_str(doc.get("first_name")),
+        "last_name": _optional_str(doc.get("last_name")),
+        "full_name": _optional_str(doc.get("full_name")),
     }
 
 
@@ -95,6 +108,27 @@ def _load_user_from_db(email: str) -> Optional[Dict[str, object]]:
         return None
 
     doc = collection.find_one({"email": email})
+    if not doc:
+        return None
+
+    try:
+        return _deserialize_db_user(doc)
+    except (TypeError, binascii.Error, ValueError):
+        return None
+
+
+def _load_user_from_db_by_id(user_id: str) -> Optional[Dict[str, object]]:
+    collection = _get_mongo_collection()
+    if collection is None:
+        return None
+
+    doc = None
+    try:
+        object_id = ObjectId(user_id)
+        doc = collection.find_one({"_id": object_id})
+    except Exception:
+        doc = None
+
     if not doc:
         return None
 
@@ -122,6 +156,11 @@ def _load_users_from_env() -> Optional[List[Dict[str, object]]]:
         email = str(entry.get("email", "")).strip().lower()
         role = str(entry.get("role", "")).strip()
         modes = entry.get("modes") or []
+        name = _optional_str(entry.get("name"))
+        username = _optional_str(entry.get("username"))
+        first_name = _optional_str(entry.get("first_name"))
+        last_name = _optional_str(entry.get("last_name"))
+        full_name = _optional_str(entry.get("full_name"))
 
         if not email or not role:
             raise HTTPException(
@@ -149,6 +188,11 @@ def _load_users_from_env() -> Optional[List[Dict[str, object]]]:
                 "password_salt": password_salt,
                 "role": role,
                 "modes": [str(mode) for mode in modes] if modes else [],
+                "name": name,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "full_name": full_name,
             }
         )
 
@@ -234,7 +278,22 @@ def authenticate_user(email: str, password: str, mode: str) -> Dict[str, object]
     return user
 
 
-def register_user(email: str, password: str, mode: str, role: str) -> Dict[str, object]:
+def get_user_by_id(user_id: str) -> Optional[Dict[str, object]]:
+    user = _load_user_from_db_by_id(user_id)
+    if user is not None:
+        return user
+
+    users = _get_user_store()
+    return next((item for item in users if item.get("id") == user_id), None)
+
+
+def register_user(
+    email: str,
+    password: str,
+    mode: str,
+    role: str,
+    name: Optional[str] = None,
+) -> Dict[str, object]:
     collection = _get_mongo_collection()
     if collection is None:
         raise HTTPException(
@@ -253,8 +312,10 @@ def register_user(email: str, password: str, mode: str, role: str) -> Dict[str, 
     password_salt = secrets.token_bytes(16)
     password_hash = _hash_password(password, password_salt)
     modes = [mode]
+    cleaned_name = _optional_str(name)
     doc = {
         "email": normalized_email,
+        "name": cleaned_name,
         "password_hash": base64.b64encode(password_hash).decode("ascii"),
         "password_salt": base64.b64encode(password_salt).decode("ascii"),
         "role": role,
@@ -266,8 +327,20 @@ def register_user(email: str, password: str, mode: str, role: str) -> Dict[str, 
     return {
         "id": str(result.inserted_id),
         "email": normalized_email,
+        "name": cleaned_name,
         "role": role,
         "modes": modes,
+    }
+
+
+def extract_user_profile_fields(user: Dict[str, object]) -> Dict[str, Optional[str]]:
+    return {
+        "email": _optional_str(user.get("email")),
+        "name": _optional_str(user.get("name")),
+        "username": _optional_str(user.get("username")),
+        "first_name": _optional_str(user.get("first_name")),
+        "last_name": _optional_str(user.get("last_name")),
+        "full_name": _optional_str(user.get("full_name")),
     }
 
 

@@ -1,7 +1,7 @@
 """
 Pydantic Schemas for Authentication
 """
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -27,6 +27,7 @@ class AuthRegisterRequest(BaseModel):
     """Request model for registration"""
     email: str = Field(..., min_length=3, max_length=254, description="User email address")
     password: str = Field(..., min_length=6, max_length=128, description="User password")
+    name: Optional[str] = Field(None, min_length=1, max_length=120, description="User name")
     mode: Literal["home", "institution"] = Field(
         ..., description="Selected mode: home or institution"
     )
@@ -39,6 +40,7 @@ class AuthRegisterRequest(BaseModel):
             "example": {
                 "email": "parent@kiddoland.local",
                 "password": "Parent123!",
+                "name": "Parent User",
                 "mode": "home",
                 "role": "Parent",
             }
@@ -56,11 +58,23 @@ class AuthTokenResponse(BaseModel):
     mode: Literal["home", "institution"] = Field(
         ..., description="User mode"
     )
+    email: Optional[str] = Field(None, description="User email")
+    name: Optional[str] = Field(None, description="User display name")
+    username: Optional[str] = Field(None, description="User handle")
+    first_name: Optional[str] = Field(None, description="User first name")
+    last_name: Optional[str] = Field(None, description="User last name")
+    full_name: Optional[str] = Field(None, description="User full name")
 
 
 class AuthUser(BaseModel):
     """Authenticated user payload"""
     user_id: str = Field(..., description="User identifier")
+    email: Optional[str] = Field(None, description="User email")
+    name: Optional[str] = Field(None, description="User display name")
+    username: Optional[str] = Field(None, description="User handle")
+    first_name: Optional[str] = Field(None, description="User first name")
+    last_name: Optional[str] = Field(None, description="User last name")
+    full_name: Optional[str] = Field(None, description="User full name")
     role: Literal["Parent", "Teacher", "Admin", "Librarian"] = Field(
         ..., description="User role"
     )
