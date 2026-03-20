@@ -83,3 +83,33 @@ def validate_token(current_user: AuthUser = Depends(get_current_user)) -> AuthUs
         last_name=profile_fields["last_name"],
         full_name=full_name,
     )
+
+
+@router.post("/refresh", response_model=AuthTokenResponse)
+def refresh_token(current_user: AuthUser = Depends(get_current_user)) -> AuthTokenResponse:
+    user = get_user_by_id(current_user.user_id)
+    token_user = user or {"id": current_user.user_id, "role": current_user.role}
+    token_data = create_access_token(token_user, current_user.mode)
+
+    profile_fields = extract_user_profile_fields(user) if user else {
+        "email": current_user.email,
+        "name": current_user.name,
+        "username": current_user.username,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "full_name": current_user.full_name,
+    }
+    full_name = profile_fields.get("full_name") or profile_fields.get("name")
+
+    return AuthTokenResponse(
+        access_token=token_data["token"],
+        expires_in=token_data["expires_in"],
+        role=current_user.role,
+        mode=current_user.mode,
+        email=profile_fields.get("email"),
+        name=profile_fields.get("name"),
+        username=profile_fields.get("username"),
+        first_name=profile_fields.get("first_name"),
+        last_name=profile_fields.get("last_name"),
+        full_name=full_name,
+    )
