@@ -66,9 +66,12 @@ def generate_rhyme_endpoint(
         tts_audio_base64 = None
         tts_media_type = None
         if request.include_tts:
-            audio_bytes, media_type = generate_tts_audio(rhyme_text)
-            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
-            tts_media_type = media_type
+            try:
+                audio_bytes, media_type = generate_tts_audio(rhyme_text)
+                tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+                tts_media_type = media_type
+            except HuggingFaceError as exc:
+                logger.warning("Optional TTS failed for /story/generate-rhyme: %s", str(exc))
 
         try:
             save_story_record(
@@ -185,9 +188,12 @@ def rewrite_story_endpoint(
         tts_audio_base64 = None
         tts_media_type = None
         if request.include_tts:
-            audio_bytes, media_type = generate_tts_audio(rewritten_story)
-            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
-            tts_media_type = media_type
+            try:
+                audio_bytes, media_type = generate_tts_audio(rewritten_story)
+                tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+                tts_media_type = media_type
+            except HuggingFaceError as exc:
+                logger.warning("Optional TTS failed for /story/rewrite: %s", str(exc))
         
         try:
             save_story_record(

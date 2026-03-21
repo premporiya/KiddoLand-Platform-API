@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import logging
 import os
+from io import BytesIO
 from dataclasses import dataclass
 from typing import Tuple
 
 import requests
+from gtts import gTTS
 
 from utils.config import get_huggingface_config
 
@@ -18,8 +20,21 @@ REQUEST_TIMEOUT = 60  # seconds
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TTS_MODEL = "espnet/kan-bayashi_ljspeech_vits"
-DEFAULT_TTS_API_URL_TEMPLATE = "https://api-inference.huggingface.co/models/{model}"
+DEFAULT_TTS_MODEL = "hexgrad/Kokoro-82M"
+DEFAULT_TTS_API_URL_TEMPLATE = "https://router.huggingface.co/hf-inference/models/{model}"
+
+
+def _normalize_tts_url_template(url_template: str) -> str:
+    normalized = url_template.strip()
+    if not normalized:
+        return DEFAULT_TTS_API_URL_TEMPLATE
+
+    deprecated_prefix = "https://api-inference.huggingface.co/models"
+    router_prefix = "https://router.huggingface.co/hf-inference/models"
+    if normalized.startswith(deprecated_prefix):
+        return normalized.replace(deprecated_prefix, router_prefix, 1)
+
+    return normalized
 
 
 @dataclass
@@ -335,7 +350,9 @@ def generate_tts_audio(text: str) -> Tuple[bytes, str]:
         )
 
     tts_model = os.getenv("HUGGINGFACE_TTS_MODEL", "").strip() or DEFAULT_TTS_MODEL
-    tts_url_template = os.getenv("HUGGINGFACE_TTS_API_URL", "").strip() or DEFAULT_TTS_API_URL_TEMPLATE
+    tts_url_template = _normalize_tts_url_template(
+        os.getenv("HUGGINGFACE_TTS_API_URL", "")
+    )
     tts_url = tts_url_template.format(model=tts_model)
 
     headers = {
@@ -353,15 +370,6 @@ def generate_tts_audio(text: str) -> Tuple[bytes, str]:
             timeout=REQUEST_TIMEOUT,
         )
 
-        if response.status_code in {401, 403}:
-            logger.warning("Hugging Face TTS auth failed with status %s", response.status_code)
-            raise HuggingFaceAuthError("Hugging Face token is invalid or expired.")
-
-        if response.status_code == 503:
-            raise HuggingFaceResponseError(
-                "The TTS model is currently loading. Please try again in a few moments."
-            )
-
         if response.status_code != 200:
             error_detail = response.text.strip() or "Unknown error"
             try:
@@ -370,7 +378,7 @@ def generate_tts_audio(text: str) -> Tuple[bytes, str]:
                     error_detail = parsed.get("error") or parsed.get("message") or error_detail
             except ValueError:
                 pass
-            raise HuggingFaceResponseError(f"Hugging Face TTS API error: {error_detail}")
+            return _generate_gtts_audio(text.strip(), error_detail)
 
         media_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
         if not media_type:
@@ -389,13 +397,28 @@ def generate_tts_audio(text: str) -> Tuple[bytes, str]:
         return response.content, media_type
 
     except requests.exceptions.Timeout:
-        raise HuggingFaceTimeoutError(
-            "Request to Hugging Face TTS API timed out. Please try again."
-        )
+        return _generate_gtts_audio(text.strip(), "Request to Hugging Face TTS API timed out")
     except requests.exceptions.RequestException as exc:
         logger.warning("Hugging Face TTS network error: %s", str(exc))
+        return _generate_gtts_audio(text.strip(), str(exc))
+
+
+def _generate_gtts_audio(text: str, original_error: str) -> Tuple[bytes, str]:
+    """
+    Fallback TTS using Google TTS when Hugging Face TTS is unavailable.
+    """
+    try:
+        logger.warning("Falling back to gTTS because Hugging Face TTS failed: %s", original_error)
+        buffer = BytesIO()
+        gTTS(text=text, lang="en").write_to_fp(buffer)
+        audio_bytes = buffer.getvalue()
+        if not audio_bytes:
+            raise HuggingFaceResponseError("Fallback TTS returned empty audio data.")
+        return audio_bytes, "audio/mpeg"
+    except Exception as exc:
+        logger.warning("Fallback gTTS failed: %s", str(exc))
         raise HuggingFaceNetworkError(
-            "Network error while calling Hugging Face TTS API. Please try again."
+            f"TTS is currently unavailable. Hugging Face error: {original_error}"
         )
 
 
