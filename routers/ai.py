@@ -140,9 +140,12 @@ def sample_ai_endpoint(
         tts_audio_base64 = None
         tts_media_type = None
         if request.include_tts:
-            audio_bytes, media_type = generate_tts_audio(output)
-            tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
-            tts_media_type = media_type
+            try:
+                audio_bytes, media_type = generate_tts_audio(output)
+                tts_audio_base64 = base64.b64encode(audio_bytes).decode("ascii")
+                tts_media_type = media_type
+            except HuggingFaceError as exc:
+                logger.warning("Optional TTS failed for /ai/sample: %s", str(exc))
 
         try:
             save_story_record(
