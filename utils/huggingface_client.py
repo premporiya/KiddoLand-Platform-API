@@ -8,15 +8,26 @@ import logging
 import os
 from io import BytesIO
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import requests
 from gtts import gTTS
+from huggingface_hub import InferenceClient
+from huggingface_hub.errors import HfHubHTTPError, InferenceTimeoutError
 
 from utils.config import get_huggingface_config
 
 # Timeout configuration
 REQUEST_TIMEOUT = 60  # seconds
+IMAGE_GEN_TIMEOUT = 120  # seconds (Stable Diffusion can be slow)
+
+# Models must have Hub inferenceProviderMapping (Inference Providers). Older IDs like
+# runwayml/stable-diffusion-v1-5 have empty mapping and 404 on hf-inference.
+DEFAULT_SD_MODEL = "ByteDance/SDXL-Lightning"
+DEFAULT_IMAGE_MODEL_FALLBACKS: Tuple[str, ...] = (
+    "ByteDance/SDXL-Lightning",
+    "black-forest-labs/FLUX.1-schnell",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +80,33 @@ class HuggingFaceNetworkError(HuggingFaceError):
 class HuggingFaceResponseError(HuggingFaceError):
     def __init__(self, message: str) -> None:
         super().__init__(message=message, status_code=502)
+
+
+def _image_model_candidates() -> list[str]:
+    primary = os.getenv("HUGGINGFACE_IMAGE_MODEL", "").strip() or DEFAULT_SD_MODEL
+    raw = os.getenv("HUGGINGFACE_IMAGE_MODEL_FALLBACKS", "").strip()
+    if raw:
+        fallbacks = [x.strip() for x in raw.split(",") if x.strip()]
+    else:
+        fallbacks = list(DEFAULT_IMAGE_MODEL_FALLBACKS)
+    out: list[str] = []
+    seen: set[str] = set()
+    for m in (primary, *fallbacks):
+        if m not in seen:
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def _pil_image_to_png_bytes(image) -> bytes:
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+    raw = buf.getvalue()
+    if not raw:
+        raise HuggingFaceResponseError(
+            "Empty image response from Hugging Face."
+        )
+    return raw
 
 
 def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
@@ -197,6 +235,105 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
         raise HuggingFaceNetworkError(
             "Network error while calling Hugging Face API. Please try again."
         )
+
+
+def generate_stable_diffusion_image(prompt: str) -> bytes:
+    """
+    Generate a single image from a text prompt via Hugging Face Inference Providers.
+
+    Uses huggingface_hub.InferenceClient (same token as chat/TTS).
+    - HUGGINGFACE_IMAGE_MODEL: primary model (default: fast SDXL-Lightning with provider mapping).
+    - HUGGINGFACE_IMAGE_MODEL_FALLBACKS: comma-separated alternates if the primary fails.
+    - HUGGINGFACE_IMAGE_PROVIDER: default "auto" (routed providers). Use "hf-inference" only
+      for models still served on the HF inference router.
+    """
+    if not prompt or not prompt.strip():
+        raise HuggingFaceResponseError("Image prompt cannot be empty")
+
+    try:
+        config = get_huggingface_config()
+    except RuntimeError as exc:
+        logger.error("Hugging Face config error: %s", exc)
+        raise HuggingFaceConfigError(
+            "Hugging Face is not configured on the server."
+        )
+
+    models = _image_model_candidates()
+    image_provider = os.getenv("HUGGINGFACE_IMAGE_PROVIDER", "").strip() or "auto"
+    prompt_text = prompt.strip()[:500]
+    last_detail = "Unknown error"
+    last_exc: Optional[BaseException] = None
+
+    for model in models:
+        client = InferenceClient(
+            token=config.api_token,
+            timeout=IMAGE_GEN_TIMEOUT,
+            provider=image_provider,
+        )
+        try:
+            image = client.text_to_image(prompt_text, model=model)
+        except StopIteration as exc:
+            last_exc = exc
+            logger.warning(
+                "No inference provider mapping for image model %s (provider=%s)",
+                model,
+                image_provider,
+            )
+            last_detail = "No inference provider mapping for this model"
+            continue
+        except ValueError as exc:
+            last_exc = exc
+            lowered = str(exc).lower()
+            if (
+                "provider mapping" in lowered
+                or "doesn't support task" in lowered
+            ):
+                logger.warning("Skipping image model %s: %s", model, exc)
+                last_detail = str(exc)[:500]
+                continue
+            raise
+        except InferenceTimeoutError as exc:
+            raise HuggingFaceTimeoutError(
+                "Image generation timed out. Please try again."
+            ) from exc
+        except HfHubHTTPError as exc:
+            last_exc = exc
+            status = exc.response.status_code if exc.response is not None else None
+            detail = (exc.server_message or str(exc)).strip()[:500] or "Unknown error"
+            last_detail = detail
+            logger.warning(
+                "Hugging Face image HTTP error model=%s status=%s: %s",
+                model,
+                status,
+                detail[:200],
+            )
+            if status in {401, 403}:
+                raise HuggingFaceAuthError(
+                    "Hugging Face token is invalid or expired."
+                ) from exc
+            if status in {404, 410, 503}:
+                continue
+            raise HuggingFaceResponseError(
+                f"Image generation failed: {detail}"
+            ) from exc
+        except requests.exceptions.Timeout:
+            raise HuggingFaceTimeoutError(
+                "Image generation timed out. Please try again."
+            )
+        except requests.exceptions.RequestException as exc:
+            logger.warning("Hugging Face image network error: %s", str(exc))
+            raise HuggingFaceNetworkError(
+                "Network error while generating the image. Please try again."
+            ) from exc
+
+        if image is None:
+            last_detail = "Empty image response"
+            continue
+        return _pil_image_to_png_bytes(image)
+
+    raise HuggingFaceResponseError(
+        f"Image generation failed after trying {len(models)} model(s). Last error: {last_detail}"
+    ) from last_exc
 
 
 def generate_story(prompt: str, age: int) -> str:

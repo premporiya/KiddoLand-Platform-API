@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import story
 from routers import auth
 from routers import ai
+from routers import video
 from dotenv import load_dotenv
 from utils.config import validate_huggingface_config
 
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(story.router, prefix="/story", tags=["AI"])
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(ai.router, prefix="/ai", tags=["AI"])
+app.include_router(video.router, tags=["Video"])
 
 @app.get("/")
 def root():
