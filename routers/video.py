@@ -1,5 +1,6 @@
 """
-Story-to-video: scenes → illustrations (Gemini or Hugging Face) → moviepy slideshow (+ optional gTTS).
+Story-to-video: scenes → illustrations (Gemini or Hugging Face) → MoviePy slideshow
+with optional narration from client-provided TTS (base64).
 """
 from __future__ import annotations
 
@@ -52,6 +53,8 @@ def generate_story_video(
             cleaned,
             request.include_voice,
             request.image_provider,
+            tts_audio_base64=request.tts_audio_base64,
+            tts_media_type=request.tts_media_type,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

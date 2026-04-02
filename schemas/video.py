@@ -11,3 +11,11 @@ class GenerateVideoRequest(BaseModel):
         default="gemini",
         description="Illustrations: gemini (AI Studio free tier) or huggingface (Inference Providers).",
     )
+    tts_audio_base64: str | None = Field(
+        default=None,
+        description="Optional base64 narration (e.g. from story generation TTS); muxed when include_voice is true.",
+    )
+    tts_media_type: str | None = Field(
+        default=None,
+        description="MIME type for tts_audio_base64 (e.g. audio/mpeg).",
+    )
