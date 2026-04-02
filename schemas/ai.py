@@ -78,6 +78,10 @@ class AiSaveFavoriteRequest(BaseModel):
         "generate",
         description="Record type: generate or rewrite",
     )
+    content_kind: Literal["story", "rhyme"] = Field(
+        "story",
+        description="Whether this favorite is from story creation or rhyme creation",
+    )
 
     class Config:
         json_schema_extra = {
@@ -86,6 +90,7 @@ class AiSaveFavoriteRequest(BaseModel):
                 "story": "Luna the cat put on her silver helmet...",
                 "age": 8,
                 "type": "generate",
+                "content_kind": "story",
             }
         }
 
@@ -120,8 +125,11 @@ class AiStoryHistoryItem(BaseModel):
     is_favorite: bool = False
     mode: str
     type: Literal["generate", "rewrite"]
+    content_kind: Literal["story", "rhyme"] = "story"
     created_at: datetime | None
     updated_at: datetime | None
+    tts_audio_base64: str | None = None
+    tts_media_type: str | None = None
 
 
 class AiStoryHistoryResponse(BaseModel):

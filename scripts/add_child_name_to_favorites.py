@@ -8,8 +8,8 @@ from pymongo import MongoClient
 
 # Read the project's Mongo env vars
 MONGO_URI = os.getenv("MONGODB_URI", "mongodb+srv://<username>:<password>@<cluster-url>/")
-DB_NAME = os.getenv("MONGODB_DB_NAME", os.getenv("MONGODB_DB_NAME", "kiddoland"))
-COLLECTION_NAME = os.getenv("MONGODB_STORY_HISTORY_COLLECTION", "story_history")
+DB_NAME = os.getenv("MONGODB_DB_NAME", "kiddoland")
+COLLECTION_NAME = "story_history"
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]

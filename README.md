@@ -211,6 +211,14 @@ POST /story/generate
 - `age` (integer, required): Child's age, must be between 1-18
 - `prompt` (string, required): Free-form story prompt (any text, 1-2000 characters)
 
+### Generate Rhyme (optional TTS)
+
+```
+POST /story/generate-rhyme
+```
+
+Uses the same request/response models as story generation (`StoryGenerateRequest` / `StoryGenerateResponse`). Body includes `age`, `prompt`, and optional `include_tts` (default `false`). When `include_tts` is `true`, the server calls `generate_tts_audio` on the generated rhyme text and may return `tts_audio_base64` and `tts_media_type` (same Hugging Face TTS path as story flows). If TTS fails, rhyme text is still returned and audio fields are `null`.
+
 ### 3. Rewrite Story
 
 ```

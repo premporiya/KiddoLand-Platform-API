@@ -36,6 +36,9 @@ def generate_rhyme_endpoint(
 ):
     """
     Generate a short rhyme/nursery rhyme for a child. Reuses StoryGenerateRequest schema.
+
+    Set `include_tts` to true to synthesize audio via `generate_tts_audio` (same TTS path as
+    story generation); response then includes `tts_audio_base64` and `tts_media_type` when successful.
     """
     # Validate age
     if request.age < 1 or request.age > 10:
@@ -82,6 +85,9 @@ def generate_rhyme_endpoint(
                 age=request.age,
                 mode=current_user.mode,
                 record_type="generate",
+                content_kind="rhyme",
+                tts_audio_base64=tts_audio_base64,
+                tts_media_type=tts_media_type,
             )
         except ValueError as exc:
             logger.warning("Story history validation failed: %s", str(exc))
@@ -204,6 +210,8 @@ def rewrite_story_endpoint(
                 age=request.age,
                 mode=current_user.mode,
                 record_type="rewrite",
+                tts_audio_base64=tts_audio_base64,
+                tts_media_type=tts_media_type,
             )
         except ValueError as exc:
             logger.warning("Story history validation failed: %s", str(exc))
