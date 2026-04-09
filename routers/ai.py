@@ -156,6 +156,8 @@ def sample_ai_endpoint(
                 age=extracted_age,
                 mode=current_user.mode,
                 record_type="generate",
+                tts_audio_base64=tts_audio_base64,
+                tts_media_type=tts_media_type,
             )
         except ValueError as exc:
             logger.warning("Auto-save story history validation failed: %s", str(exc))
@@ -194,6 +196,7 @@ def save_ai_favorite_endpoint(
             mode=current_user.mode,
             record_type=request.type,
             is_favorite=True,
+            content_kind=request.content_kind,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
