@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random
 from io import BytesIO
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -109,17 +110,25 @@ def _pil_image_to_png_bytes(image) -> bytes:
     return raw
 
 
-def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
+def _call_huggingface_api(
+    messages: list,
+    max_length: int = 1000,
+    *,
+    temperature: float | None = None,
+) -> str:
     """
     Internal function to call Hugging Face Inference API.
-    
+
     Args:
         messages: List of chat messages in OpenAI-compatible format
         max_length: Maximum length of generated text
-        
+        temperature: Sampling temperature. When None, uses 0.7 (legacy default).
+            For activity generation, pass an explicit value (never 0) so each
+            request can vary. No seed is ever sent to the API.
+
     Returns:
         Generated text from the model
-        
+
     Raises:
         Exception: If API call fails
     """
@@ -136,10 +145,15 @@ def _call_huggingface_api(messages: list, max_length: int = 1000) -> str:
         "Content-Type": "application/json",
     }
 
+    # Stochastic sampling: never use temperature=0 or a fixed seed here.
+    eff_temperature = 0.7 if temperature is None else float(temperature)
+    if eff_temperature <= 0.0:
+        eff_temperature = 0.7
+
     payload = {
         "model": config.model_id,
         "messages": messages,
-        "temperature": 0.7,
+        "temperature": eff_temperature,
         "top_p": 0.9,
         "max_tokens": max_length,
         "stream": False,
@@ -425,6 +439,21 @@ def sample_completion(prompt: str) -> str:
         {"role": "user", "content": prompt},
     ]
     return _call_huggingface_api(messages, max_length=800)
+
+
+def sample_completion_activity(prompt: str) -> str:
+    """
+    Text generation for learning activities / quizzes.
+
+    Uses randomized temperature in (0.65, 0.95) per request so outputs vary
+    across calls. Does not use temperature=0 or any fixed seed.
+    """
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant for kids."},
+        {"role": "user", "content": prompt},
+    ]
+    sampling_temp = random.uniform(0.65, 0.95)
+    return _call_huggingface_api(messages, max_length=1200, temperature=sampling_temp)
 
 
 def generate_rhyme(prompt: str, age: int) -> str:
