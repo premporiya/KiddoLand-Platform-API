@@ -47,14 +47,80 @@ def _difficulty_guidance(difficulty: str) -> str:
     )
 
 
+def _learning_goal_guidance(learning_goal: str) -> str:
+    """Return extra prompt instructions tailored to the requested learning goal."""
+    goal = learning_goal.lower().strip()
+
+    if any(k in goal for k in ("count", "number", "math", "addition", "subtraction", "arithmetic")):
+        return (
+            "Learning goal is COUNTING / NUMBERS: "
+            "Every question must be a short word-problem or counting scenario set inside the theme — "
+            "NOT a trivia fact (e.g. do NOT ask 'how many moons does Saturn have'). "
+            "Instead write scenarios like: 'There are 4 stars on the left and 3 on the right. "
+            "How many stars are there in total?' "
+            "Answer options MUST be plain numbers (e.g. '3', '7', '12'). "
+            "Keep numbers small and age-appropriate. "
+            "Vary the operations: some questions can be addition, some can be simple subtraction or comparison."
+        )
+
+    if any(k in goal for k in ("vocab", "word", "spelling", "language", "letters")):
+        return (
+            "Learning goal is VOCABULARY / WORDS: "
+            "Ask about word meanings, correct naming of things in the theme, completing sentences, "
+            "or identifying which word fits a description. "
+            "Options should be short words or phrases, not full sentences."
+        )
+
+    if any(k in goal for k in ("science", "nature", "biology", "physics", "chemistry", "planet", "animal")):
+        return (
+            "Learning goal is SCIENCE FACTS: "
+            "Ask simple, factual science questions related to the theme. "
+            "Each question should have one clearly correct answer a child can learn from. "
+            "Keep explanations friendly and educational."
+        )
+
+    if any(k in goal for k in ("geo", "country", "continent", "map", "capital", "place")):
+        return (
+            "Learning goal is GEOGRAPHY: "
+            "Ask about places, countries, continents, or simple map facts connected to the theme. "
+            "Options should be place names or short geographic facts."
+        )
+
+    if any(k in goal for k in ("read", "comprehension", "story", "sentence", "paragraph")):
+        return (
+            "Learning goal is READING COMPREHENSION: "
+            "Each question should give a short 1-2 sentence mini-passage and then ask a question about it. "
+            "Test understanding, not memorization."
+        )
+
+    if any(k in goal for k in ("color", "colour", "shape", "pattern", "size")):
+        return (
+            "Learning goal is SHAPES / COLORS: "
+            "Ask questions about identifying shapes, colors, or visual patterns described in words. "
+            "Keep descriptions vivid and imaginative within the theme."
+        )
+
+    if any(k in goal for k in ("emotion", "feeling", "social", "friend", "kind", "share", "team")):
+        return (
+            "Learning goal is SOCIAL / EMOTIONAL: "
+            "Ask questions about feelings, how to be a good friend, problem-solving in social situations, "
+            "or what the right kind action would be in a described scenario."
+        )
+
+    # Generic fallback — no special shaping needed
+    return ""
+
+
 def build_activity_prompt(request: ActivityGenerateRequest) -> str:
     difficulty_key = request.difficulty or "medium"
     difficulty_line = _difficulty_guidance(difficulty_key)
+    goal_line = _learning_goal_guidance(request.learning_goal)
+    goal_section = f"\n{goal_line}\n" if goal_line else ""
     return f"""You are a children's learning activity generator. Generate a fun quiz activity for a child aged {request.age_band} about {request.theme}, focusing on {request.learning_goal}.
 
 Difficulty level: {difficulty_key}.
 {difficulty_line}
-
+{goal_section}
 Return ONLY valid JSON with this exact structure (no markdown, no explanation, no code fences):
 {{
   "title": "Activity title",
