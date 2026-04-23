@@ -19,6 +19,7 @@ from pymongo import MongoClient, errors
 from bson import ObjectId
 
 from schemas.auth import AuthUser
+from utils.download_limit_service import reset_monthly_download_usage
 
 load_dotenv()
 
@@ -99,6 +100,7 @@ def _deserialize_db_user(doc: Dict[str, object]) -> Dict[str, object]:
         "first_name": _optional_str(doc.get("first_name")),
         "last_name": _optional_str(doc.get("last_name")),
         "full_name": _optional_str(doc.get("full_name")),
+        "plan": str(doc.get("plan", "free")).strip().lower() or "free",
     }
 
 
@@ -155,6 +157,7 @@ def _load_users_from_env() -> Optional[List[Dict[str, object]]]:
     for entry in data:
         email = str(entry.get("email", "")).strip().lower()
         role = str(entry.get("role", "")).strip()
+        plan = str(entry.get("plan", "free")).strip().lower() or "free"
         modes = entry.get("modes") or []
         name = _optional_str(entry.get("name"))
         username = _optional_str(entry.get("username"))
@@ -193,6 +196,7 @@ def _load_users_from_env() -> Optional[List[Dict[str, object]]]:
                 "first_name": first_name,
                 "last_name": last_name,
                 "full_name": full_name,
+                "plan": "paid" if plan == "paid" else "free",
             }
         )
 
@@ -233,6 +237,7 @@ def _load_demo_users() -> List[Dict[str, object]]:
                 "password_salt": salt,
                 "role": entry["role"],
                 "modes": entry["modes"],
+                "plan": "free",
             }
         )
 
@@ -321,6 +326,7 @@ def register_user(
         "role": role,
         "modes": modes,
         "created_at": int(time.time()),
+        "plan": "free",
     }
 
     result = collection.insert_one(doc)
@@ -330,6 +336,7 @@ def register_user(
         "name": cleaned_name,
         "role": role,
         "modes": modes,
+        "plan": "free",
     }
 
 
@@ -351,6 +358,7 @@ def create_access_token(user: Dict[str, object], mode: str) -> Dict[str, object]
         "sub": user["id"],
         "role": user["role"],
         "mode": mode,
+        "plan": "paid" if str(user.get("plan", "free")).lower() == "paid" else "free",
         "iat": now,
         "exp": now + ttl_seconds,
     }
@@ -408,6 +416,7 @@ def verify_access_token(token: str) -> AuthUser:
 
     role = payload.get("role")
     mode = payload.get("mode")
+    plan = payload.get("plan", "free")
     user_id = payload.get("sub")
 
     if not role or not mode or not user_id:
@@ -428,7 +437,38 @@ def verify_access_token(token: str) -> AuthUser:
             detail="Token has an invalid mode.",
         )
 
-    return AuthUser(user_id=user_id, role=role, mode=mode)
+    if plan not in {"free", "paid"}:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has an invalid plan.",
+        )
+
+    return AuthUser(user_id=user_id, role=role, mode=mode, plan=plan)
+
+
+def set_user_plan(user_id: str, plan: str) -> Dict[str, object]:
+    normalized_plan = "paid" if str(plan).strip().lower() == "paid" else "free"
+    user = get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    collection = _get_mongo_collection()
+    if collection is not None:
+        try:
+            collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": {"plan": normalized_plan}},
+            )
+        except Exception:
+            pass
+
+    user["plan"] = normalized_plan
+    if normalized_plan == "paid":
+        reset_monthly_download_usage(user_id)
+    return user
 
 
 def get_current_user(
