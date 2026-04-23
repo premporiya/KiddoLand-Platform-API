@@ -7,7 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Response
 from utils.story_history_service import list_favorite_records, mark_story_favorite, delete_story_record
 from schemas.auth import AuthUser
-from utils.auth_service import get_current_user
+from utils.auth_service import get_current_user, get_user_by_id
 
 """
 AI Router
@@ -32,12 +32,19 @@ from schemas.ai import (
     AiSaveFavoriteRequest,
     AiSaveFavoriteResponse,
     AiStoryHistoryResponse,
+    DownloadAttemptRequest,
+    DownloadAttemptResponse,
 )
 from schemas.auth import AuthUser
 from utils.auth_service import get_current_user
 from utils.huggingface_client import HuggingFaceError, sample_completion, generate_tts_audio
 from utils.safety_filter import clean_text_for_model, extract_child_name, is_content_safe
 from utils.story_history_service import list_story_records, save_story_record, mark_story_favorite
+from utils.download_limit_service import (
+    FREE_MONTHLY_DOWNLOAD_LIMIT,
+    consume_download_slot,
+    get_monthly_download_usage,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -278,3 +285,47 @@ def toggle_favorite_endpoint(
             status_code=500,
             detail="Unable to update favorite status right now."
         )
+
+
+@router.post("/downloads/attempt", response_model=DownloadAttemptResponse)
+def attempt_download(
+    request: DownloadAttemptRequest,
+    current_user: AuthUser = Depends(get_current_user),
+) -> DownloadAttemptResponse:
+    user = get_user_by_id(current_user.user_id)
+    plan = "paid" if str((user or {}).get("plan", current_user.plan)).lower() == "paid" else "free"
+    if plan == "paid":
+        return DownloadAttemptResponse(
+            allowed=True,
+            plan="paid",
+            used_downloads=0,
+            monthly_limit=None,
+            remaining_downloads=None,
+            message="Unlimited downloads are available on your paid plan.",
+        )
+
+    usage = consume_download_slot(current_user.user_id)
+    if usage["allowed"]:
+        return DownloadAttemptResponse(
+            allowed=True,
+            plan="free",
+            used_downloads=usage["used"],
+            monthly_limit=usage["limit"],
+            remaining_downloads=usage["remaining"],
+            message=(
+                f"Download allowed. You have {usage['remaining']} free download(s) remaining this month."
+            ),
+        )
+
+    snapshot = get_monthly_download_usage(current_user.user_id)
+    return DownloadAttemptResponse(
+        allowed=False,
+        plan="free",
+        used_downloads=snapshot["used"],
+        monthly_limit=FREE_MONTHLY_DOWNLOAD_LIMIT,
+        remaining_downloads=0,
+        message=(
+            "You have reached your free-plan limit of 3 downloads this month. "
+            "Upgrade to paid for unlimited downloads."
+        ),
+    )

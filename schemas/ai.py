@@ -134,3 +134,25 @@ class AiStoryHistoryItem(BaseModel):
 
 class AiStoryHistoryResponse(BaseModel):
     items: list[AiStoryHistoryItem]
+
+
+class DownloadAttemptRequest(BaseModel):
+    download_type: Literal["audio", "pdf"] = Field(
+        ...,
+        description="Download intent type.",
+    )
+
+
+class DownloadAttemptResponse(BaseModel):
+    allowed: bool = Field(..., description="Whether this download is allowed.")
+    plan: Literal["free", "paid"] = Field(..., description="Current user plan.")
+    used_downloads: int = Field(..., description="Downloads used in current month.")
+    monthly_limit: int | None = Field(
+        default=None,
+        description="Monthly limit for this user plan; null means unlimited.",
+    )
+    remaining_downloads: int | None = Field(
+        default=None,
+        description="Remaining downloads in current month; null means unlimited.",
+    )
+    message: str = Field(..., description="User-friendly status message.")

@@ -4,7 +4,14 @@ Handles login and token validation endpoints.
 """
 from fastapi import APIRouter, Depends
 
-from schemas.auth import AuthLoginRequest, AuthRegisterRequest, AuthTokenResponse, AuthUser
+from schemas.auth import (
+    AuthLoginRequest,
+    AuthPlanUpdateRequest,
+    AuthPlanUpdateResponse,
+    AuthRegisterRequest,
+    AuthTokenResponse,
+    AuthUser,
+)
 from utils.auth_service import (
     authenticate_user,
     create_access_token,
@@ -12,6 +19,7 @@ from utils.auth_service import (
     get_current_user,
     get_user_by_id,
     register_user,
+    set_user_plan,
 )
 
 router = APIRouter()
@@ -28,6 +36,7 @@ def login(request: AuthLoginRequest) -> AuthTokenResponse:
         expires_in=token_data["expires_in"],
         role=user["role"],
         mode=request.mode,
+        plan="paid" if str(user.get("plan", "free")).lower() == "paid" else "free",
         email=profile_fields["email"],
         name=profile_fields["name"],
         username=profile_fields["username"],
@@ -54,6 +63,7 @@ def register(request: AuthRegisterRequest) -> AuthTokenResponse:
         expires_in=token_data["expires_in"],
         role=user["role"],
         mode=request.mode,
+        plan="paid" if str(user.get("plan", "free")).lower() == "paid" else "free",
         email=profile_fields["email"],
         name=profile_fields["name"],
         username=profile_fields["username"],
@@ -76,6 +86,7 @@ def validate_token(current_user: AuthUser = Depends(get_current_user)) -> AuthUs
         user_id=current_user.user_id,
         role=current_user.role,
         mode=current_user.mode,
+        plan="paid" if str(user.get("plan", current_user.plan)).lower() == "paid" else "free",
         email=profile_fields["email"],
         name=profile_fields["name"],
         username=profile_fields["username"],
@@ -88,7 +99,7 @@ def validate_token(current_user: AuthUser = Depends(get_current_user)) -> AuthUs
 @router.post("/refresh", response_model=AuthTokenResponse)
 def refresh_token(current_user: AuthUser = Depends(get_current_user)) -> AuthTokenResponse:
     user = get_user_by_id(current_user.user_id)
-    token_user = user or {"id": current_user.user_id, "role": current_user.role}
+    token_user = user or {"id": current_user.user_id, "role": current_user.role, "plan": current_user.plan}
     token_data = create_access_token(token_user, current_user.mode)
 
     profile_fields = extract_user_profile_fields(user) if user else {
@@ -106,10 +117,25 @@ def refresh_token(current_user: AuthUser = Depends(get_current_user)) -> AuthTok
         expires_in=token_data["expires_in"],
         role=current_user.role,
         mode=current_user.mode,
+        plan="paid" if str(token_user.get("plan", current_user.plan)).lower() == "paid" else "free",
         email=profile_fields.get("email"),
         name=profile_fields.get("name"),
         username=profile_fields.get("username"),
         first_name=profile_fields.get("first_name"),
         last_name=profile_fields.get("last_name"),
         full_name=full_name,
+    )
+
+
+@router.patch("/plan", response_model=AuthPlanUpdateResponse)
+def update_plan(
+    request: AuthPlanUpdateRequest,
+    current_user: AuthUser = Depends(get_current_user),
+) -> AuthPlanUpdateResponse:
+    updated_user = set_user_plan(current_user.user_id, request.plan)
+    plan = "paid" if str(updated_user.get("plan", "free")).lower() == "paid" else "free"
+    return AuthPlanUpdateResponse(
+        success=True,
+        plan=plan,
+        message=f"Plan changed to {plan}.",
     )

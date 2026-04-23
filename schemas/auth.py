@@ -58,6 +58,9 @@ class AuthTokenResponse(BaseModel):
     mode: Literal["home", "institution"] = Field(
         ..., description="User mode"
     )
+    plan: Literal["free", "paid"] = Field(
+        "free", description="Subscription plan"
+    )
     email: Optional[str] = Field(None, description="User email")
     name: Optional[str] = Field(None, description="User display name")
     username: Optional[str] = Field(None, description="User handle")
@@ -81,3 +84,16 @@ class AuthUser(BaseModel):
     mode: Literal["home", "institution"] = Field(
         ..., description="User mode"
     )
+    plan: Literal["free", "paid"] = Field(
+        "free", description="Subscription plan"
+    )
+
+
+class AuthPlanUpdateRequest(BaseModel):
+    plan: Literal["free", "paid"] = Field(..., description="Target subscription plan")
+
+
+class AuthPlanUpdateResponse(BaseModel):
+    success: bool = Field(..., description="True when plan was updated")
+    plan: Literal["free", "paid"] = Field(..., description="Current subscription plan")
+    message: str = Field(..., description="Status message")
